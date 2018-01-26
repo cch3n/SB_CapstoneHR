@@ -199,7 +199,7 @@ Although the logistic regression provides us with a pretty accurate model, lets 
 #Create classification tree using training data. 
 hr_stat_tree = rpart(left ~ ., data = hr_stat_training, method = "class", 
                      control = rpart.control(minibucket = 25))
-prp(hr_stat_tree, extra=7)
+rpart.plot(hr_stat_tree)
 ```
 
 Now that we have our tree, lets test its accuracy against the testing data set. If the results are not accurate we may need to prune our classification tree. Again we divide correct predictions results by total number of results. 
@@ -219,7 +219,7 @@ Lets see if adding more nodes to our tree will make our model stronger.
 ```{r}
 hr_stat_tree2 = rpart(left ~ ., data = hr_stat_training, method = "class", control = 
                         rpart.control(minibucket = 25, cp = .002))
-prp(hr_stat_tree2, extra=7)
+rpart.plot(hr_stat_tree2)
 
 ```
 
