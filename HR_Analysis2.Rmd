@@ -1,0 +1,320 @@
+---
+title: "Predicting Whether or Not an Employee Will Quit"
+output:
+  html_document: default
+  word_document: default
+  pdf_document: default
+--- 
+
+## Introduction
+Many companies often lose some of their best employees due to low satisfactory levels or unsatisfactory working conditions. Often when employees are unhappy, they will jump ship and move on to the next job. Some employees quit without any indication, while others it was a long time coming. 
+
+These types of shifts in employees can cause a decrease in overall productivity along with company success. Identifying and catching possible changes in employee moral can often save the company loss and money. 
+
+## Problem
+For many companies, losing employees is a costly problem, especially if the employee is highly valued. Each time an employee quits, another one must be hired and trained, if the newly trained employee highly productive great, if not they have to repeat the process which is a strain on productivity. The company would like to know why they are losing some of their valued employees, and if there is a way to retain them before they decide to quit. 
+
+Our goal in this analysis is to predict whether employees will stay or quit. This method type of analysis can help companies predict whether or not their top performing employees will stay or go. 
+
+## Data Set
+The data set for this analysis focuses on the statistics gathered by human resources on employees that have quit and currently employees. In this data set there are 14,999 data entries and 10 variables. 
+
+Employee action is to quit or stay. Left (0 = stay, 1 = quit)
+
+Here are the factors included by the HR stats. 
+
+* Satisfaction_level, employee's satisfaction level at work, ranging between 0 and 1.
+* Last_evaluation, company's last evaluation of an employee, ranging between 0 and 1. 
+* Number_project, the number of projects handled by the employee.
+* Average_monthly_hours, the average montly hours worked by the employee.
+* Time_spend_company, number of years the employee has worked for the company.
+* Work_accident, whether or not the employee expereience a workplace accident.
+* Promotion_last_5year, whether the employee has been promoted in 5 years (0 = no, 1 = yes)
+* Job_category, 10 levels of different jobs offered by the company.
+* Salary, 3 levels of salary, low, medium and high. 
+
+## Data Limitations
+Instead of including the exact amount of salary, the data set only includes a factor with 3 levels. If the exact salary were provided, the company could have a more accurate analysis. Also, including salary amount can help the company while negotiating. Instead of a range of between "low and medium" they could have an exact amount predicted to offer their employee for them to stay. 
+
+The data set is very straight forward and could include other factors that affect the workplace. For example, employee altercations or commute to work distance. These these other factors could help provide a better analysis of whether or not an employee will leave their job. 
+
+## Data Wrangling
+```{r setup, include=FALSE}
+#Load in all libraries
+library(dplyr)
+library(ggplot2)
+library(caTools)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(corrplot)
+```
+
+The data did not contain any missing values. We adjusted the column names to better reflect the data represented and to clean up the names for presentation.  Also, three of the independent variables needed to be readjusted to be factors, so that they correctly reflect the levels represented.
+
+
+```{r}
+#Add data set to workspace and name it hr_stat. Check data. 
+hr_stat <- read.csv("HR_comma_sep.csv")
+summary(hr_stat)
+
+#Check for missing values.
+summary(is.na(hr_stat))
+
+#Rename variable names to be clean and clear. 
+hr_stat <- hr_stat %>%
+  rename(Satisfaction = satisfaction_level) %>%
+  rename(Evaluation = last_evaluation) %>%
+  rename(NumberProjects = number_project) %>%
+  rename(AvgMonthlyHours = average_montly_hours) %>%
+  rename(YearsWithCompany = time_spend_company) %>%
+  rename(WorkAccident = Work_accident) %>%
+  rename(Quit = left) %>%
+  rename(Promotion = promotion_last_5years) %>%
+  rename(Department = sales) %>%
+  rename(Salary = salary)
+
+#Change "Quit", "WorkAccident" and "Promotion" to a factor of 0 and 1, 1 being Yes 0 being No. 
+hr_stat$Quit <- factor(hr_stat$Quit)
+hr_stat$Promotion <- factor(hr_stat$Promotion)
+hr_stat$WorkAccident <- factor(hr_stat$WorkAccident)
+
+#Change salary to ordered()
+hr_stat$Salary <- ordered(hr_stat$Salary, c("low","medium","high"))
+
+#Check data set for final tweaks. 
+str(hr_stat)
+        
+```
+
+## Preliminary Analysis
+In the premliminary analysis we want to explore each of the independent variables and their relationship to those who left and who stayed. 
+
+* The average employee satisfaction rating is at 61.28% satisfaction rating.
+* those who left the average satifaction rating was 44%. 
+* The company has a 23.8% employee default percentage. 
+```{r}
+mean(hr_stat$Satisfaction)
+
+avgsatleft <- hr_stat %>%
+  filter(Quit == 1)
+mean(avgsatleft$Satisfaction)
+
+nrow(avgsatleft)/nrow(hr_stat)
+
+
+
+```
+
+
+#### Satisfaction Level
+```{r}
+#Plot histogram of satisfaction rating. 
+ggplot(hr_stat, aes(Satisfaction, fill = Quit)) + geom_histogram(binwidth = 0.01)   + ggtitle("Satisfaction Ratings of Employees Stay vs. Quit") + theme_update(plot.title = element_text(hjust = 0.5))
+```
+
+* The plot indicates that most employees who left have a low satisfaction level. 
+* There is a tri-modal effect. satisfaction levels of (< 12.5), (37.5 - 0.50), (0.7 >) left the company more.
+* From the individuals who stayed, we can see a general trend of having 50% or higher satisfaction. 
+
+#### Last Evaluation 
+```{r}
+ggplot(hr_stat, aes(Evaluation, fill = Quit)) + geom_histogram(binwidth = 0.01)  + ggtitle("Last Evaluation of Employees, Stay vs Quit") + theme_update(plot.title = element_text(hjust = 0.5))
+
+```
+
+* Bi-modal relationship.
+* Evaluation shows that the company is losing many of their top performers. 
+* Many employees with lower evaluations are quitting as well. 
+* Also the individuals who are staying have an evaluation of above 40%.
+
+#### Number of Projects 
+```{r}
+ggplot(hr_stat, aes(NumberProjects, fill = Quit)) + geom_bar(position = "dodge", stat = "count") + ggtitle("Number of Projects, Stay vs Quit") + theme_update(plot.title = element_text(hjust = 0.5))
+
+
+```
+
+* Individuals with 2, (4-6+) projects seem more likely to quit. 
+
+
+#### Average Montly Hours Worked
+```{r}
+ggplot(hr_stat, aes(AvgMonthlyHours, fill = Quit)) + geom_histogram(binwidth = 1) + ggtitle("Average Monthly Hours, Stay vs Quit") + theme_update(plot.title = element_text(hjust = 0.5))
+```
+
+* Bi-modal relationship, many employees who left either worked under 200 hours or above 250. 
+* Comparing with those who stayed, many employees were working almost 300 hours, above the amount of those who stayed, which is below 300 hours. 
+
+#### Time spent with company
+
+```{r}
+ggplot(hr_stat, aes(YearsWithCompany, fill = Quit)) + geom_bar(position = "dodge") + ggtitle("Years Spent with Company, Stay vs Quit") + theme_update(plot.title = element_text(hjust = 0.5)) 
+
+```
+
+Of the employees that left most left under 5 Years. WHich could be a deciding point for employees when evaluating if they should quit or stay at a company. 
+
+
+#### Promotions
+
+
+```{r}
+ggplot(hr_stat, aes(Promotion, fill = Quit)) + geom_bar(position = "dodge")  + ggtitle("Total Promotions, Stay vs Quit") + theme_update(plot.title = element_text(hjust = 0.5)) + coord_flip()
+```
+
+* From this table we see that individuals who left were not offered a promotion in the last 5 years. 
+* This table could indicate that because no promotion was offered an individual quit. 
+* However, we need to keep in mind, many individuals quit prior to hitting their 5 year mark, thus the variable may not be realistic in evaluating an employee and can be improved by less than 5 year evaluation. 
+
+#### Salary
+
+```{r}
+ggplot(hr_stat, aes(Salary, fill = Quit)) + geom_bar(position = "dodge")  + ggtitle("Employee Salary Level, Stay vs Quit") + theme_update(plot.title = element_text(hjust = 0.5)) + coord_flip() 
+```
+
+* Most of the employees who quit were in the low and medium bracket of salary. 
+* Not many individuals with high salary are quiting. 
+
+#### Correlation of Variables 
+
+Checking the correlation of variables can help avoid colinearity in our analysis. Therefore, running a correlation check can help strenthen our model. 
+
+```{r}
+hr_cor <- hr_stat %>%
+  select(Satisfaction:Promotion) 
+hr_cor$Quit = as.numeric(as.character(hr_cor$Quit))
+hr_cor$WorkAccident = as.numeric(as.character(hr_cor$WorkAccident))
+hr_cor$Promotion = as.numeric(as.character(hr_cor$Promotion))  
+
+Cor <- cor(hr_cor)
+Cor
+corrplot(Cor, method = "circle")
+```
+
+* Negative correlation (-0.3883) between quitting and satisfaction rating. 
+* Positive correlation between evaluation, average montly hours(0.3397), and number of projects(0.3493). 
+* Positive correlation between average montly hours, evaluation (0.3397), and number of projects(0.4172).
+
+## Machine Learning 
+Now that we have a general view of the variables in relation to employees who have stayed and quit. We will use different machine learning methods to build models to predict whether or not and indivudal will quit or stay at the company. We will use three different models, classification tree and regression tree, logistic regression model, and random forest model. 
+
+### Splitting the Data Into Training and Testing Subsets
+
+```{r}
+#Split data into training and testing. 
+set.seed(1234)
+divide = sample.split(hr_stat, SplitRatio = 0.75)
+hr_stat_training = subset(hr_stat, divide == TRUE)
+hr_stat_test = subset(hr_stat, divide == FALSE)
+
+#Check the split of data for percentage. Should be approximately 75%
+nrow(hr_stat_training)
+nrow(hr_stat_training)/nrow(hr_stat)
+
+```
+Instead of a 75/25 split, we have about a 70/30 split. Since our data set it large it should not be an issue. Now we will use our subsets to make our models and to test the accuracy of those models. 
+
+### Classification Tree
+Running the classification tree will help indicate which variables are most important to our model. By seeing which variables siginificant we can then make a better logistic regression model. 
+
+```{r}
+# Create classification tree using training set
+hr_stat_CART = rpart(Quit ~ ., data = hr_stat_training, method = "class", 
+                     control = rpart.control(minibucket = 25))
+rpart.plot(hr_stat_CART)
+```
+
+* From the tree the most important factors are satisfaction, years with company, number projects, evaluation, and average monthly hours. 
+* Now that we have our classification tree, lets see how accurate our model is by using the test subset to predict the whether or not employees will stay or quit. 
+
+```{r}
+PredictCART1 <- predict(hr_stat_CART, newdata = hr_stat_test, type = "class")
+table(hr_stat_test$Quit, PredictCART1)
+treeacc = (3391+978)/(3391+38+3+978)
+treeacc
+```
+* The classification tree had a 99% accuracy in predicting the test subset. 
+
+Lets see if adding more nodes will help strengthen our model. 
+
+```{r}
+hr_stat_CART2 = rpart(Quit ~ ., data = hr_stat_training, method = "class", 
+                      control = rpart.control(minibucket = 25, cp = .002))
+rpart.plot(hr_stat_CART2)
+```
+
+
+```{r}
+PredictCART2 <- predict(hr_stat_CART2, newdata = hr_stat_test, type = "class")
+table(hr_stat_test$Quit, PredictCART2)
+tree2acc = (3417+976)/(3417+976+12+95)
+tree2acc
+```
+
+* This model has an accuracy of 97% in predicting our test subset. 
+* Seems liket CART1 has better accuracy, therefore we will use those variables to come up with our logistic regression model. 
+
+
+### Logistic Regression Model 
+
+From our CART1 model we know that the variables satisfaction, years with company, number projects, evaluation, and average monthly hours are the most significant. Since we know that there is a slight correlation with number of project, evaluation and average monthly hours, we will drop number of projects and average monthly hours in our model. 
+
+```{r}
+model1 <- glm(Quit ~ Satisfaction + YearsWithCompany + Evaluation, data = hr_stat_training, family = binomial)
+summary(model1)
+```
+
+```{r}
+model2 <- glm(Quit ~ Satisfaction + YearsWithCompany + NumberProjects, data = hr_stat_training, family = binomial)
+summary(model2)
+```
+
+```{r}
+model3 <- glm(Quit ~ Satisfaction + YearsWithCompany + AvgMonthlyHours, data = hr_stat_training, family = binomial)
+summary(model3)
+```
+```{r}
+model4 <- glm(Quit ~ Satisfaction + YearsWithCompany + AvgMonthlyHours + Promotion + WorkAccident + Salary + Department, data = hr_stat_training, family = binomial)
+summary(model4)
+```
+
+
+```{r}
+anova(model1, model2, test = "Chisq")
+anova(model2, model3, test = "Chisq")
+anova(model2, model4, test = "Chisq")
+
+```
+
+* Model2 is the stronger model. 
+
+From the ANOVA above model 2 is the strongest model, however lets see which model has the best accuracy when predicting the testing subset. 
+
+```{r}
+predictiontest1 = predict(model1, type = "response", newdata = hr_stat_test)
+table(hr_stat_test$Quit, predictiontest1 > 0.5)
+model1accuracy1 = (3166+275)/(3166+263+796+275)
+model1accuracy1
+```
+```{r}
+predictiontest2 = predict(model2, type = "response", newdata = hr_stat_test)
+table(hr_stat_test$Quit, predictiontest2 > 0.5)
+model1accuracy2 = (3166+270)/(3166+263+801+270)
+model1accuracy2
+```
+
+```{r}
+predictiontest3 = predict(model3, type = "response", newdata = hr_stat_test)
+table(hr_stat_test$Quit, predictiontest3 > 0.5)
+model1accuracy3 = (3170+272)/(3170+259+799+272)
+model1accuracy3
+```
+
+```{r}
+predictiontest4 = predict(model4, type = "response", newdata = hr_stat_test)
+table(hr_stat_test$Quit, predictiontest4 > 0.5)
+model1accuracy4 = (3214+270)/(3214+801+210+270)
+model1accuracy4
+```
+
