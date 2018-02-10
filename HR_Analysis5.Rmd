@@ -1,0 +1,611 @@
+---
+title: "Predicting Whether or Not an Employee Will Quit"
+output:
+  html_document: default
+  word_document: default
+  pdf_document: default
+--- 
+
+## Introduction
+Many companies often lose some of their best employees due to low satisfactory levels or unsatisfactory working conditions. Often when employees are unhappy, they will jump ship and move on to the next job. Some employees quit without any indication, while others it was a long time coming. 
+
+These types of shifts in employee numbers can cause a decrease in overall productivity along with company success. Identifying and catching possible identifiers in whether or not an employee will quit can often save the company from low productivity and losing profit. 
+
+## Problem
+For many companies, losing employees is a costly problem, especially if the employee is highly valued handling top projects. Each time an employee quits, another one must be hired and trained, if the newly trained employee highly productive great, if not they have to repeat the hiring process which is a strain on productivity. The company would like to know why they are losing some of their valued employees, and if there is a way to retain them before they decide to quit. 
+
+Our goal in this analysis is to predict whether employees will stay or quit. Companies can then decide on how to retain some of their valued employees. This type of analysis can help companies protect their best employees from quitting. 
+
+## Data Set
+The data set for this analysis focuses on the statistics gathered by human resources on employees that have quit and current employees. In this data set there are 14,999 data entries and 10 variables. The origial data set is simulated data to present a possible problem a company may be faced with. The data is located at https://www.kaggle.com/ludobenistant/hr-analytics. 
+
+Employee action is to quit or stay. Left (0 = stay, 1 = quit)
+
+Here are the factors included by the HR stats. 
+
+* Satisfaction, employee's satisfaction level at work, ranging between 0 and 1.
+* Evaluation, company's last evaluation of an employee, ranging between 0 and 1. 
+* NumberProjects, the number of projects handled by the employee.
+* AvgMonthlyHours, the average montly hours worked by the employee.
+* YearsWithCompany, number of years the employee has worked for the company.
+* WorkAccident, whether or not the employee expereience a workplace accident.
+* Promotion, whether the employee has been promoted in 5 years (0 = no, 1 = yes)
+* Department, 10 levels of different jobs offered by the company.
+* Salary, 3 levels of salary, low, medium and high. 
+
+## Data Limitations
+Instead of including the exact amount of salary, the data set only includes a factor with 3 levels. If the exact salary were provided, the company could have a more accurate analysis. Also, by including salary amount can help the company while negotiating new contracts. Instead of a range of between "low and medium" they could have an exact amount predicted to offer their employee for them to stay. 
+
+The data set is very straight forward and could include other factors that affect the workplace. For example, employee altercations or commute to work distance. These other factors could help provide a better analysis of whether or not an employee will leave their job. 
+
+## Data Wrangling
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE)
+#Load in all libraries
+library(car)
+library(ggplot2)
+library(caTools)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(corrplot)
+library(caret)
+library(ROCR)
+library(gridExtra)
+library(dplyr)
+```
+
+The data did not contain any missing values. We adjusted the column names to better reflect the data represented and to clean up the names for presentation.  Also, three of the independent variables needed to be adjusted to be factors, so that they correctly reflect the variables represented.
+
+
+```{r}
+#Add data set to workspace and name it hr_stat. Check data. 
+hr_stat <- read.csv("HR_comma_sep.csv")
+summary(hr_stat)
+
+#Check for missing values.
+summary(is.na(hr_stat))
+
+#Rename variable names to be clean and clear. 
+hr_stat <- hr_stat %>%
+  rename(Satisfaction = satisfaction_level) %>%
+  rename(Evaluation = last_evaluation) %>%
+  rename(NumberProjects = number_project) %>%
+  rename(AvgMonthlyHours = average_montly_hours) %>%
+  rename(YearsWithCompany = time_spend_company) %>%
+  rename(WorkAccident = Work_accident) %>%
+  rename(Quit = left) %>%
+  rename(Promotion = promotion_last_5years) %>%
+  rename(Department = sales) %>%
+  rename(Salary = salary)
+
+#Change "Quit", "WorkAccident" and "Promotion" to a factor of 0 and 1, 1 being Yes 0 being No. 
+hr_stat$Quit <- factor(hr_stat$Quit)
+hr_stat$Promotion <- factor(hr_stat$Promotion)
+hr_stat$WorkAccident <- factor(hr_stat$WorkAccident)
+
+#Change salary to ordered()
+hr_stat$Salary <- ordered(hr_stat$Salary, c("low","medium","high"))
+
+#Check data set for final tweaks. 
+str(hr_stat)
+        
+```
+
+## Preliminary Analysis
+In the premliminary analysis we want to explore each of the independent variables and their relationship to those who left and who stayed. 
+
+* The average employee satisfaction rating is at 61.28% satisfaction.
+* Those who left the company had an average satifaction rating was 44%. 
+* The company has a 23.8% employee quitting percentage. 
+
+```{r}
+mean(hr_stat$Satisfaction)
+avgsatleft <- hr_stat %>%
+  filter(Quit == 1)
+mean(avgsatleft$Satisfaction)
+nrow(avgsatleft)/nrow(hr_stat)
+
+```
+
+
+
+#### Satisfaction Level
+
+```{r fig.width=10, warning=FALSE}
+# Plot satisfaction level using histogram and density plot. 
+
+p1 <- ggplot(hr_stat, aes(Satisfaction, fill = Quit, colour = Quit)) + 
+  geom_histogram(position = "fill", binwidth = 0.01, alpha = 0.8) +
+  ggtitle("Satisfaction Ratings of Employees Histogram") +
+  theme(plot.title = element_text(hjust = 0.5),
+        panel.grid.major.y = element_line(colour = "grey80"),
+        legend.position = "none") +
+  scale_x_continuous(breaks = seq(0, 1, 0.1)) +
+  scale_y_continuous(breaks = seq(0, 1, 0.1), labels = scales::percent) +
+  labs(y = "Percentage") +
+  scale_fill_discrete(name = "Stay/Quity", labels = c("0" = "Stay", "1" = "Quit")) +
+  scale_color_discrete(name = "Stay/Quit", labels = c("0" = "Stay", "1" = "Quit"))
+
+p2 <- ggplot(hr_stat, aes(Satisfaction, fill = Quit, colour = Quit)) + 
+  geom_density(position = "identity", binwidth = 0.01, alpha = 0.6) +
+  ggtitle("Satisfaction Ratings of Employees Density Plot") + 
+  theme(plot.title = element_text(hjust = 0.5),
+        legend.position = "bottom") +
+  scale_x_continuous(breaks = seq(0,1,0.1)) +
+  scale_fill_discrete(name = "Stay/Quit", labels = c("0" = "Stay", "1" = "Quit")) +
+  scale_color_discrete(name = "Stay/Quit", labels = c("0" = "Stay", "1" = "Quit"))
+
+grid.arrange(p1, p2, ncol = 2)
+
+```
+
+
+* The plot indicates that most employees who left have a low satisfaction level between 0.37 - 0.50. 
+* There is a tri-modal effect. Satisfaction levels of (< 15), (0.35 - 0.50), (0.7-0.9) left the company more.
+* From the individuals who stayed, we can see a general trend of having 50% or higher satisfaction. 
+
+#### Last Evaluation 
+
+```{r fig.width=10, warning=FALSE}
+
+
+p3 <- ggplot(hr_stat, aes(Evaluation, fill = Quit, colour = Quit)) +
+  geom_histogram(position = "fill", binwidth = 0.01, alpha = 0.8) +
+  ggtitle("Last Evaluation of Employees Histogram") + 
+  theme(plot.title = element_text(hjust = 0.5),
+        panel.grid.major.y = element_line(colour = "grey80"), 
+        legend.position = "none") +
+  scale_x_continuous(breaks = seq(0, 1, 0.1)) +
+  scale_y_continuous(breaks = seq(0, 1, 0.1), labels = scales::percent) +
+  labs(y = "Percentage") +
+  scale_fill_discrete(name = "Stay/Quit", labels = c("0" = "Stay", "1" = "Quit")) +
+  scale_color_discrete(name = "Stay/Quit", labels = c("0" = "Stay", "1" = "Quit"))
+
+p4 <- ggplot(hr_stat, aes(Evaluation, fill = Quit, colour = Quit)) + 
+  geom_density(position = "identity", binwidth = 0.01, alpha = 0.6) + 
+  ggtitle("Last Evaluation of Employees Density Plot") + 
+  theme(plot.title = element_text(hjust = 0.5),
+        legend.position = "bottom") +
+  scale_x_continuous(breaks = seq(0, 1, 0.1)) +
+  scale_fill_discrete(name = "Stay/Quit", labels = c("0" = "Stay", "1" = "Quit")) +
+  scale_color_discrete(name = "Stay/Quit", labels = c("0" = "Stay", "1" = "Quit"))
+
+grid.arrange(p3, p4, ncol = 2)
+```
+
+* Bi-modal relationship between quitting and company evaluation. 
+* The company is losing many of their top evaluated performers. 
+* Individuals who are staying have an evaluation of above 40%.
+
+#### Number of Projects 
+```{r}
+
+position <- data.frame(pos = c(.80, .07, .80, .07, .80, .07, .80, .07, .80, .07, .07))
+testing <- data.frame(projects = hr_stat[,3], Quit = hr_stat[,7])
+testingproject <- testing %>%
+  group_by(projects, Quit) %>%
+  summarise(count = n()) %>%
+  mutate(pct = count/sum(count)) %>% 
+  mutate(pcttot = count/14999*100) 
+testingproject$pcttot <- round(testingproject$pcttot, digits = 2)
+
+ggplot(testingproject, aes(projects, pct, colour = Quit, fill = Quit)) +
+  geom_bar(stat = "identity", alpha = 0.8) +
+  geom_text(data = testingproject, 
+            aes(x = projects, y = position$pos, label = paste0(pcttot, "%")),
+            colour = "black", size = 3) +
+  geom_text(data = testingproject, 
+            aes(x = projects, y = position$pos + 0.06, label = paste0(count)),
+            colour = "black", size = 3) +
+  ggtitle("Number of Projects, Stay vs Quit") + 
+  theme(plot.title = element_text(hjust = 0.5),
+        panel.grid.major.y = element_line(colour = "grey80")) +
+  scale_x_continuous(breaks = seq(2, 7, 1)) +
+  scale_y_continuous(breaks = seq(0, 1, 0.10), labels = scales::percent) +
+  labs(y = "Relative Percentage", x = "Number of Projects",
+       subtitle = "Bars note number of employees and percentage of whole company.") + 
+  scale_fill_discrete(name = "Stay/Quit", labels = c("0" = "Stay", "1" = "Quit")) +
+  scale_color_discrete(name = "Stay/Quit", labels = c("0" = "Stay", "1" = "Quit")) 
+
+```
+
+* Individuals with 2, (4-6+) projects are more likely to quit.
+* 65% of individuals with 2 and 6+ projects have quit, 16.53% of the whole company. 
+* Most employees with 3-4 projects have stayed with the company, 52.94% of employees. 
+* Employees with 2 projects, 65% have quit, which is about half of total employee who quit. 
+
+#### Average Montly Hours Worked
+
+```{r fig.width=10, warning=FALSE}
+p5 <- ggplot(hr_stat, aes(AvgMonthlyHours, fill = Quit, colour = Quit)) + 
+  geom_histogram(binwidth = 1, position = "fill", alpha = 0.8) + 
+  ggtitle("Average Monthly Hours Histogram") + 
+  theme(plot.title = element_text(hjust = 0.5),
+        panel.grid.major.y = element_line(colour = "grey80"),
+        legend.position = "none") +
+  scale_y_continuous(breaks = seq(0, 1, 0.1), labels = scales::percent) +
+  labs(y = "Percentage") +
+  scale_fill_discrete(name = "Stay/Quit", labels = c("0" = "Stay", "1" = "Quit")) +
+  scale_color_discrete(name = "Stay/Quit", labels = c("0" = "Stay", "1" = "Quit"))
+
+p6 <- ggplot(hr_stat, aes(AvgMonthlyHours, fill = Quit, colour = Quit)) +
+  geom_density(position = "identity", binwidth = 1, alpha = 0.6) +
+  ggtitle("Average Monthly Hours Density Plot") +
+  theme(plot.title = element_text(hjust = 0.5),
+        legend.position = "bottom") +
+  scale_fill_discrete(name = "Stay/Quit", labels = c("0" = "Stay", "1" = "Quit")) +
+  scale_color_discrete(name = "Stay/Quit", labels = c("0" = "Stay", "1" = "Quit"))
+
+grid.arrange(p5, p6, ncol = 2)
+```
+
+* Bi-modal relationship, many employees who left either worked under 175 hours or above 225. 
+* There is a higher percentage of employees quitting with 250+ hours. 
+* Employees who are underworked and overworked are quitting. 
+
+#### Time spent with company
+
+```{r}
+Years <- data.frame(pos = c(.80, .07, .80, .07, .80, .07, .80, .07, .80, .07, .8, .8, .8))
+testing <- data.frame(years = hr_stat[,5], Quit = hr_stat[,7])
+testingyears <- testing %>%
+  group_by(years, Quit) %>%
+  summarise(count = n()) %>%
+  mutate(pct = count/sum(count)) %>% 
+  mutate(pcttot = count/14999*100) 
+testingyears$pcttot <- round(testingyears$pcttot, digits = 2)
+
+ggplot(testingyears, aes(years, pct, colour = Quit, fill = Quit)) +
+  geom_bar(stat = "identity", alpha = 0.8) +
+  geom_text(data = testingyears, 
+            aes(x = years, y = Years$pos, label = paste0(pcttot, "%")),
+            colour = "black", size = 3) +
+  geom_text(data = testingyears, 
+            aes(x = years, y = Years$pos + 0.06, label = paste0(count)),
+            colour = "black", size = 3) +
+  ggtitle("Years in Company") + 
+  theme(plot.title = element_text(hjust = 0.5),
+        panel.grid.major.y = element_line(colour = "grey80")) +
+  scale_x_continuous(breaks = seq(1, 10, 1)) +
+  scale_y_continuous(breaks = seq(0, 1, 0.10), labels = scales::percent) +
+  labs(y = "Relative Percentage", x = "Years",
+       subtitle = "Bars note number of employees and percentage of whole company.") + 
+  scale_fill_discrete(name = "Stay/Quit", labels = c("0" = "Stay", "1" = "Quit")) +
+  scale_color_discrete(name = "Stay/Quit", labels = c("0" = "Stay", "1" = "Quit")) 
+
+```
+
+* Most employees left between working 3-6 years with the company, 23.44% of the company.
+* Of the employees who have been with the company for 5 years, 50% have quit. 
+
+
+#### Promotions
+
+
+```{r}
+position <- data.frame(posy = c(.75, .10, .75, .10),
+                       posx = c(1.08, 1.08, 2.08, 2.08))
+testing <- data.frame(promotion = hr_stat[,8], Quit = hr_stat[,7])
+testingpromotion <- testing %>%
+  group_by(promotion, Quit) %>%
+  summarise(count = n()) %>%
+  mutate(pct = count/sum(count)) %>% 
+  mutate(pcttot = count/14999*100) 
+testingpromotion$pcttot <- round(testingpromotion$pcttot, digits = 4)
+
+ggplot(testingpromotion, aes(promotion, pct, colour = Quit, fill = Quit)) +
+  geom_bar(stat = "identity", alpha = 0.8) +
+  geom_text(data = testingpromotion, 
+            aes(x = promotion, y = position$posy, label = paste0(pcttot, "%")),
+            colour = "black", size = 3) +
+  geom_text(data = testingpromotion, 
+            aes(x = position$posx, y = position$posy, label = paste0(count)),
+            colour = "black", size = 3) +
+  ggtitle("Promotions of Employees") + 
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.y = element_text(hjust = 0.5, angle = 90),
+        panel.grid.major.x = element_line(colour = "grey80")) +
+  scale_x_discrete(labels = c("1" = "Promotion", "0" = "No Promotion")) +
+  scale_y_continuous(breaks = seq(0, 1.0, 0.1), labels = scales::percent) +
+  labs(y = "Relative Percentage", x = "Promotions",
+       subtitle = "Bars note number of employees and percentage of whole company.")+ 
+  scale_fill_discrete(name = "Stay/Quit", labels = c("0" = "Stay", "1" = "Quit")) +
+  scale_color_discrete(name = "Stay/Quit", labels = c("0" = "Stay", "1" = "Quit")) +
+  coord_flip()
+
+```
+
+* From this table we see that most individuals who left were not offered a promotion in the last 5 years. 
+* 25% of employees who were not offered a promotion have quit. 
+* 5% of promoted employees have quit. 
+
+#### Salary
+
+```{r}
+
+position <- data.frame(posy = c(.75, .07, .75, .07, .75, .07),
+                       posx = c(1.1, 1.1, 2.1, 2.1, 3.1, 3.1))
+testing <- data.frame(salary = hr_stat[,10], Quit = hr_stat[,7])
+testingsalary <- testing %>%
+  group_by(salary, Quit) %>%
+  summarise(count = n()) %>%
+  mutate(pct = count/sum(count)) %>% 
+  mutate(pcttot = count/14999*100) 
+testingsalary$pcttot <- round(testingsalary$pcttot, digits = 2)
+
+ggplot(testingsalary, aes(salary, pct, colour = Quit, fill = Quit)) +
+  geom_bar(stat = "identity", alpha = 0.8) +
+  geom_text(data = testingsalary, 
+            aes(x = salary, y = position$posy, label = paste0(pcttot, "%")),
+            colour = "black", size = 3) +
+  geom_text(data = testingsalary, 
+            aes(x = position$posx, y = position$posy, label = paste0(count)),
+            colour = "black", size = 3) +
+  ggtitle("Salary Level of Employees") + 
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.y = element_text(hjust = 0.5, angle = 90),
+        panel.grid.major.x = element_line(colour = "grey80")) +
+  scale_x_discrete() +
+  scale_y_continuous(breaks = seq(0, 1.0, 0.1), labels = scales::percent) +
+  labs(y = "Relative Percentage", x = "Salary Level",
+       subtitle = "Bars note number of employees and percentage of whole company.")+ 
+  scale_fill_discrete(name = "Stay/Quit", labels = c("0" = "Stay", "1" = "Quit")) +
+  scale_color_discrete(name = "Stay/Quit", labels = c("0" = "Stay", "1" = "Quit")) +
+  coord_flip()
+
+  
+```
+
+* Most of the employees who quit were in the low and medium bracket of salary. 
+* About 6.6% of high paid employees have quit. 
+* 20% of medium paid employees have quit.
+* 30% of low paid employees have quit. 
+
+#### Correlation of Variables 
+
+Checking the correlation of variables can help avoid colinearity in our analysis. Therefore, running a correlation check can help make sure our coefficients show an accurate relationship. 
+
+```{r}
+hr_cor <- hr_stat %>%
+  select(Satisfaction:Promotion) 
+hr_cor$Quit = as.numeric(as.character(hr_cor$Quit))
+hr_cor$WorkAccident = as.numeric(as.character(hr_cor$WorkAccident))
+hr_cor$Promotion = as.numeric(as.character(hr_cor$Promotion))  
+
+Cor <- cor(hr_cor)
+Cor
+corrplot(Cor, method = "circle")
+```
+
+* Negative correlation (-0.3883) between quitting and satisfaction rating. 
+* Positive correlation between evaluation, average montly hours(0.3397), and number of projects(0.3493). * Positive correlation between average monthly hours, evaluation (0.3397), and number of projects(0.4172).
+
+## Machine Learning 
+Now that we have a general view of the variables in relation to employees who have stayed and quit. We will use different machine learning methods to build models to predict whether or not and indivudal will quit or stay at the company. We will use three different models, classification tree and regression tree, logistic regression model, and random forest model. 
+
+### Splitting the Data Into Training and Testing Subsets
+
+```{r}
+#Split data into training and testing. 
+set.seed(1234)
+divide = sample.split(hr_stat, SplitRatio = 0.75)
+hr_stat_training = subset(hr_stat, divide == TRUE)
+hr_stat_test = subset(hr_stat, divide == FALSE)
+
+#Check the split of data for percentage. Should be approximately 75%
+nrow(hr_stat_training)
+nrow(hr_stat_training)/nrow(hr_stat)
+
+```
+Instead of a 75/25 split, we have about a 70/30 split. Since our data set is large it should not be an issue.
+
+### Classification Tree
+Running the classification tree will help indicate which variables are most important to our model. By seeing which variables siginificant we can then make a better logistic regression model. 
+
+```{r}
+# Create classification tree using training set
+hr_stat_CART = rpart(Quit ~ ., data = hr_stat_training, method = "class", 
+                     control = rpart.control(minibucket = 25))
+rpart.plot(hr_stat_CART)
+```
+
+* From the tree the most important factors are satisfaction, years with company, number projects, evaluation, and average monthly hours. 
+* Now that we have our classification tree, lets see how accurate our model is by using the test subset to predict the whether or not employees will stay or quit. 
+
+```{r}
+PredictCART1 <- predict(hr_stat_CART, newdata = hr_stat_test, type = "class")
+
+confusionMatrix(PredictCART1, hr_stat_test$Quit)
+
+```
+* The classification tree had a 97% accuracy in predicting the test subset.
+
+
+Lets see if adding more nodes will help strengthen our model. 
+
+```{r}
+hr_stat_CART2 = rpart(Quit ~ ., data = hr_stat_training, method = "class", 
+                      control = rpart.control(minibucket = 25, cp = .002))
+rpart.plot(hr_stat_CART2)
+```
+
+
+```{r}
+PredictCART2 <- predict(hr_stat_CART2, newdata = hr_stat_test, type = "class")
+confusionMatrix(PredictCART2, hr_stat_test$Quit)
+```
+
+* This model has an accuracy of 97.6% in predicting our test subset. 
+* Adding more nodes improvd the accuracy of our model by 0.5% which is a small improvment. 
+
+```{r}
+# Plot ROC curve
+pred <- predict(hr_stat_CART2, hr_stat_test)
+roc_pred <- prediction(pred[,2], hr_stat_test$Quit)
+roc.perf = performance(roc_pred, measure = "tpr", x.measure = "fpr")
+roc.perfauc = performance(roc_pred, measure = "auc")
+
+# Calculate and Plot AUC
+
+roc.perfauc <- unlist(slot(roc.perfauc, "y.values"))
+roc.perfauc <- round(roc.perfauc, digits = 4)
+roc.perfauc <- paste(c("AUC = "), roc.perfauc, sep = "")
+plot(roc.perf, colorize = TRUE) 
+  legend(0.6, 0.2, c(roc.perfauc), border = "white", cex = 1.4, box.col = "white") 
+  title("ROC Curve CART Model")
+  abline(a = 0, b = 1)
+
+# Plot precision and recall curve. 
+prec.recall <- performance(roc_pred, measure="prec", x.measure="rec")
+plot(prec.recall, colorize=TRUE)
+title("Precision and Recall Curve CART Model")
+```
+
+* The ROC curve has an AUC of 0.9686, which means the CART model is an excellent model for predicting whether or not an employee will quit their job. 
+* There is a high true positive rate without any false positive hits making this a strong model. 
+* Precision Recall plot also shows high performance of our model, precision does not fall till about 0.9 recall. 
+
+
+
+### Logistic Regression Model 
+
+With the CART model, we were able to achieve 97.6% accuracy, now lets use logistic regression to build a model. First we will build the model, then remove any of the insignificant variables. After we have our significant model, we will run a check on the variables using the variable inflation factor. Since some of our variables are correlated, we want to check to make sure multicollinearity does not occur. Multicollinearity can affect our coefficients and not show the actual relationship of our independent and dependent variables. 
+
+```{r}
+#First make a logistic regression model using all variables. 
+model1 <- glm(Quit ~ ., family = binomial, data = hr_stat_training)
+summary(model1)
+```
+
+All variables are significant, none will be removed unless there is multicollinearity.
+
+```{r}
+#Run VIF to find if there is a variable inflation. 
+vif(model1)
+```
+
+Since the GVIF is not above 5, we do not have multicollinearity and can continue on with our analysis. Now we will see how accurate our model is on the testing data set. 
+
+```{r}
+Predmodel1 <- predict(model1, hr_stat_test, type = "response" )
+confusionMatrix(as.numeric(Predmodel1 > 0.5), hr_stat_test$Quit)
+```
+
+* The logistic regression model was 79.69% accurate. 
+
+```{r warning=FALSE}
+# Plot ROC curve
+predmodel1 <- predict(model1, hr_stat_test)
+roc_predmodel1 <- prediction(predmodel1, hr_stat_test$Quit)
+roc.perfmodel1 = performance(roc_predmodel1, measure = "tpr", x.measure = "fpr")
+
+roc.perfmodel1auc <- performance(roc_predmodel1, measure = "auc")
+
+plot(roc.perfmodel1, colorize = TRUE)
+roc.perfmodel1auc <- unlist(slot(roc.perfmodel1auc, "y.values"))
+roc.perfmodel1auc <- round(roc.perfmodel1auc, digits = 4)
+roc.perfmodel1auc <- paste(c("AUC = "), roc.perfmodel1auc, sep = "")
+legend(0.6, 0.2, c(roc.perfmodel1auc), border = "white", cex = 1.4, box.col = "white")
+abline(a = 0, b = 1)
+title("ROC Curve Logistic Regression Model")
+
+#Plot precision recall curve and sensitivity and specificity curve. 
+plot(performance(roc_predmodel1, measure="prec", x.measure="rec"), 
+     colorize=TRUE)
+title("Precision and Recall Curve Logistic Regression Model")
+```
+
+
+* Logistic regression model is not as accurate as our CART model, but still has high performance with a AUC of 0.8216.
+* The precision and recall plot also shows that our logistic regression model is high performing, but not as good as our CART model. 
+* We can try to improve the model by adding interactions between variables. 
+
+```{r}
+modelinteraction2 <- glm(Quit ~ . -Department -WorkAccident -Promotion + Satisfaction*Evaluation + Satisfaction*NumberProjects + 
+                           Satisfaction*YearsWithCompany + Evaluation*NumberProjects + Evaluation*AvgMonthlyHours +
+                           Evaluation*YearsWithCompany , family = binomial, data = hr_stat_training)
+summary(modelinteraction2)
+Predmodel100 <- predict(modelinteraction2, hr_stat_test, type = "response" )
+confusionMatrix(as.numeric(Predmodel100 > 0.5), hr_stat_test$Quit)
+```
+
+* Adding significant interactions has improved our model greatly by 12.69%, our new model has a accuracy of 92.38%. 
+
+```{r}
+Predmodel100 <- predict(modelinteraction2, hr_stat_test)
+roc_predmodel100 <- prediction(Predmodel100, hr_stat_test$Quit)
+roc.perfmodel100 = performance(roc_predmodel100, measure = "tpr", x.measure = "fpr")
+
+roc.perfmodel100auc <- performance(roc_predmodel100, measure = "auc")
+plot(roc.perfmodel100, colorize = TRUE)
+roc.perfmodel100auc <- unlist(slot(roc.perfmodel100auc, "y.values"))
+roc.perfmodel100auc <- round(roc.perfmodel100auc, digits = 4)
+roc.perfmodel100auc <- paste(c("AUC = "), roc.perfmodel100auc, sep = "")
+legend(0.6, 0.2, c(roc.perfmodel100auc), border = "white", cex = 1.4, box.col = "white")
+abline(a = 0, b = 1)
+title("ROC Curve Logistic Regression Model")
+
+#Plot precision recall curve and sensitivity and specificity curve. 
+plot(performance(roc_predmodel100, measure="prec", x.measure="rec"), 
+     colorize=TRUE)
+title("Precision and Recall Curve Logistic Regression Model")
+```
+
+* We were able to improve the model by adding interactions between variables. The AUC is now 0.9448.
+* The new model shows that the interactions between variables are significant within the model. 
+
+### Random Forest Model
+
+The last model we will build is using the random forest model. The random forest model produces multiple models on the training data set and averages them to create a stronger model than the basic decision tree. By averaging multiple trees, the random forest model reduces the variance in the average decision tree model. 
+
+We will use the same training and testing data set from the previous models. 
+
+```{r}
+set.seed(100)
+hr_stat_foresttrain = randomForest(Quit ~ ., data = hr_stat_training, nodesize = 25, ntree = 500)
+PredTree1 <- predict(hr_stat_foresttrain, hr_stat_test, type = "response" )
+confusionMatrix(PredTree1, hr_stat_test$Quit)
+
+```
+
+This is a 0.14% accuracy improvment on our CART model with 97.76% accuracy. 
+
+```{r}
+# Plot ROC curve
+predrandom1 <- predict(hr_stat_foresttrain, hr_stat_test, type = "prob")
+roc_predrandom1 <- prediction(predrandom1[,2], hr_stat_test$Quit)
+roc.perfrandom1 = performance(roc_predrandom1, measure = "tpr", x.measure = "fpr")
+
+roc.perfrandom1auc <- performance(roc_predrandom1, measure = "auc")
+plot(roc.perfrandom1, colorize = TRUE)
+roc.perfrandom1auc <- unlist(slot(roc.perfrandom1auc, "y.values"))
+roc.perfrandom1auc <- round(roc.perfrandom1auc, digits = 4)
+roc.perfrandom1auc <- paste(c("AUC = "), roc.perfrandom1auc, sep = "")
+legend(0.6, 0.2, c(roc.perfrandom1auc), border = "white", cex = 1.4, box.col = "white")
+abline(a = 0, b = 1)
+title("ROC Curve Random Forest Model")
+
+
+plot(performance(roc_predrandom1, measure="prec", x.measure="rec"), 
+     colorize=TRUE)
+title("Precision and Recall Curve Random Forest Model")
+```
+
+* The random forest model is our best model. It has the highest percentage accuracy in predictions of our testing subset, also the highest ROC and the highest precision and recall plots. 
+
+## Conclusions
+1. Each of our models were strong in predicting whether or not an employee will quit their job. Our strongest model was the random forest model, then the CART model and lastly the logistic regression model. 
+
+2. The employer can predict the actions of their employees with high accuracy and confidence. They can use the models to help alert whether or not an employee will quit their position. 
+
+3. Employee satifaction, evaluation, number of projects, years with company and average monthly hours are high indicators on if an employee will quit or not. Based on our preliminary analysis the employer can determine what is optimal for each of the indicators. 
+
+## Recommendations
+1. There are many reasons why an individual quits a job, variables that were not included in this data set. I would recommend adding other variables such as commute time or employee altercations to help determine a more resilient model and to rule out extraneous factors like health or personal problems. 
+
+2. Instead of using factor levels to describe salary, it would be better to use an actual number or range. This way we can predict how much salary is needed to keep an employee from quitting. By predicting the amount needed, the company will know the best salary offer the employee without overshooting and costing the company resources. 
+
+3. Lastly, I would recommend the employer to run the model on their currently employees and see which individuals are flagged as potential quitters. Then depending on if the employee is expendable or not the company should take further action to protect their assets. 
+
+
