@@ -1,0 +1,26 @@
+---
+title: "Project Proposal"
+output: html_document
+---
+
+## What is the problem you want to solve?
+Why are employees quitting their jobs?
+
+## Who is your client and why do they care about this problem? In other words, what wil your client DO or DECIDE based on your analysis that they wouldn't have otherwise?
+The client is the company where the employees work. This problem affects them because they are losing employees that are important to their productivity. Based on our analysis the client could decide to offer an employee incentives to stay, or do nothing to help and wait for them leave to make room for a more productive hire. 
+
+## What data are you going to use for this? How will you acquire this data?
+This data will be based off of information collected by the HR department. We will acquire this data through https://www.kaggle.com/ludobenistant/hr-analytics
+
+## In brief, outline your approach to solving this problem.
+* Data Wrangling
+* Preliminary analysis of data
+* Machine learning.
+  * CART Model
+  * Logistic regression model
+  * Random Forest Model
+  
+## What are your deliverables?
+* Code
+* Paper/Slide Deck
+
