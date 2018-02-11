@@ -1,0 +1,21 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### How do you frame your main question as a machine learning problem?
+Will employees quit or stay?
+It is a supervised problem, we use logistic regression model, classification and regression trees and a random forest model. 
+
+### What are the main features you will use?
+We will use all the independent variables from the data frame. IF they are not significant in the logistic regression model then will remove the predictors. 
+
+### Which machine learning technique will you use?
+logistic regression model, classification and regression trees and a random forest model. 
+
+### How will you evaluate the sucess of  your machine learning technique?
+we will use confusionmatrix to see the accuracy of the model, then we will use ROC and precision and recall plots to see how well the model performs. 
